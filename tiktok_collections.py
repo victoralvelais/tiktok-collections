@@ -196,3 +196,4 @@ def getCollectionItems():
 if __name__ == "__main__":
   # collectionData = getCollectionData() # list of collections
   # collectionData = getCollectionItems() # list of items in collections
+  pass
