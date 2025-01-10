@@ -1,7 +1,9 @@
 import json
+import os
 import requests
 import time
 from types import SimpleNamespace
+from tiktok import getAuthTokens
 
 def buildUrl(appContext, cursor=0, collectionId=None):
   baseUrls = {
@@ -28,15 +30,6 @@ def loadConfig():
     configDict = json.load(f)
     config = json.loads(json.dumps(configDict), object_hook=lambda d: SimpleNamespace(**d))
   return config
-
-def getAuthTokens(cookies):
-  msToken = next((cookie.value for cookie in cookies if cookie.name == 'msToken'), '')
-  sessionId = next((cookie.value for cookie in cookies if cookie.name == 'sessionid'), '')
-  return msToken, sessionId
-
-# def makeRequest(url, headers):
-#   response = requests.request("GET", url, data="", headers=headers)
-#   return response.json()
 
 def makeRequest(url, headers):
   session = requests.Session()
@@ -112,54 +105,59 @@ def map_collection_item(item):
     }
 }
 
-def getCollectionData():
-  config = loadConfig()
+def getCollectionData(config=None):
+  if not config:
+    config = loadConfig()
   msToken, sessionId = getAuthTokens(config.cookies)
+  dataFilePath = f'collection_data_{config.app_context.user.uniqueId}.json'
   
-  collections = []
   cursor = 0
-  hasMore = True
+  hasMore = not (os.path.exists(dataFilePath) and time.time() - os.path.getmtime(dataFilePath) < 12 * 3600)
+  collections = [] if hasMore else json.load(open(dataFilePath))['collections']  # hasMore = True
   
   while hasMore:
     reqUrl = buildUrl(config.app_context, cursor)
     headers = buildHeaders(config.app_context, msToken, sessionId)
     data = makeRequest(reqUrl, headers)
-    
+
     if 'collectionList' in data:
-      collections.extend(data.collectionList)
+      collections.extend(data['collectionList'])
       hasMore = data.get('hasMore', False)
       cursor = data.get('cursor', 0)
-      print(f"Fetched {len(data.collectionList)} items. Total: {len(collections)}")
+      print(f"Fetched {len(data['collectionList'])} items. Total: {len(collections)}")
     else:
       hasMore = False
-    
+
     time.sleep(1)
 
   outputData = {
     'total': len(collections),
-    'user': config.app_context.user,
+    'user': vars(config.app_context.user),
     'collections': collections
   }
-  saveToJson(outputData, f"collection_data_{config.app_context.user.uniqueId}.json")
+
+  saveToJson(outputData, dataFilePath)
   return collections
 
-def getCollectionItems():
-  config = loadConfig()
+def getCollectionItems(config=None, collectionData=None):
+  if not config:
+    config = loadConfig()
   msToken, sessionId = getAuthTokens(config.cookies)
+  print(f"collectionData: {collectionData}")
 
-  with open(f"collection_data_{config.app_context.user.uniqueId}.json", 'r') as f:
-    collectionDict = json.load(f)
-    collectionData = json.loads(json.dumps(collectionDict), object_hook=lambda d: SimpleNamespace(**d))
-  
-  for collection in collectionData.collections:
+  if not collectionData:
+    with open(f"collection_data_{config.app_context.user.uniqueId}.json", 'r') as f:
+      collectionData = json.load(f)
+
+  for collection in collectionData['collections']:
     collectionItems = []
     cursor = 0
     hasMore = True
 
     try:
-      print(f"\nFetching collection: {collection.name} - Total: {collection.total}")
+      print(f"\nFetching collection: {collection['name']} - Total: {collection['total']}")
       while hasMore:
-        reqUrl = buildUrl(config.app_context, cursor, collection.collectionId)
+        reqUrl = buildUrl(config.app_context, cursor, collection['collectionId'])
         headers = buildHeaders(config.app_context, msToken, sessionId)
         data = makeRequest(reqUrl, headers)
         
@@ -175,14 +173,14 @@ def getCollectionItems():
         
         time.sleep(1)
     except Exception as e:
-      print(f"\nError fetching collection {collection.name}: {str(e)}")
+      print(f"\nError fetching collection {collection['name']}: {str(e)}")
       print("Saving progress and continuing to next collection...")
 
     # Directly add items to the collection in collectionDict
     total_items = 0
-    for idx, collectionStore in enumerate(collectionDict['collections']):
-      if collectionStore['collectionId'] == collection.collectionId:
-        collectionDict['collections'][idx]['itemList'] = collectionItems
+    for idx, collectionStore in enumerate(collectionData['collections']):
+      if collectionStore['collectionId'] == collection['collectionId']:
+        collectionData['collections'][idx]['itemList'] = collectionItems
         items_in_collection = len(collectionItems)
         print(f"Collection '{collectionStore['name']}': {items_in_collection} items")
         total_items += items_in_collection
@@ -190,10 +188,8 @@ def getCollectionItems():
     
     print(f"\nTotal items across all collections: {total_items}")
   
-  saveToJson(collectionDict, f"collection_data_{config.app_context.user.uniqueId}.json")
-  return collectionDict
+  saveToJson(collectionData, f"collection_data_{config.app_context.user.uniqueId}.json")
+  return collectionData
 
 if __name__ == "__main__":
-  # collectionData = getCollectionData() # list of collections
-  # collectionData = getCollectionItems() # list of items in collections
   pass

@@ -2,6 +2,7 @@ from playwright.sync_api import sync_playwright
 import json
 import os
 import time
+from types import SimpleNamespace
 
 def getOrCreateConfig():
   configFile = 'tiktok_config.json'
@@ -13,31 +14,49 @@ def getOrCreateConfig():
     with open(configFile, 'w') as f:
       json.dump(config, f, indent=2)
   with open(configFile, 'r') as f:
-    return json.load(f)
+    config_dict = json.load(f)
+    return json.loads(json.dumps(config_dict), object_hook=lambda d: SimpleNamespace(**d))
 
 def saveConfig(config):
     with open('tiktok_config.json', 'w') as f:
       json.dump(config, f, indent=2)
 
-def captureTiktokData():
-  config = getOrCreateConfig()
-  
+def getCredentials():
+  credentialsFile = 'credentials.json'
+  if os.path.exists(credentialsFile):
+    with open(credentialsFile, 'r') as f:
+      return json.load(f)
+  return None
+
+def getAuthTokens(cookies):
+  msToken = next((cookie.value for cookie in cookies if cookie.name == 'msToken'), '')
+  sessionId = next((cookie.value for cookie in cookies if cookie.name == 'sessionid'), '')
+  return msToken, sessionId
+
+def captureTiktokData(config):
+  print("No valid tokens found in config, capturing browser data")
   with sync_playwright() as p:
     browser = p.chromium.launch(headless=False)
     context = browser.new_context()
     page = context.new_page()
+    timeout = 60000 * 5
 
     page.goto("https://www.tiktok.com/login/phone-or-email/email")
-    page.fill('input[name="username"]', config['credentials']['username'])
-    page.fill('input[type="password"]', config['credentials']['password'])
-    page.click('button[type="submit"]')
+    credentials = getCredentials()
 
-    page.wait_for_selector('a[href*="/upload"]', timeout=60000) or \
-    page.wait_for_selector('.avatar-anchor', timeout=60000) or \
-    page.wait_for_selector('[data-e2e="profile-icon"]', timeout=60000)
+    if credentials:
+      page.fill('input[name="username"]', credentials['username'])
+      page.fill('input[type="password"]', credentials['password'])
+      page.click('button[type="submit"]')
+    else:
+      input("Please login manually on TikTok and press Enter when done...")
+
+    page.wait_for_selector('a[href*="/upload"]', timeout=timeout) or \
+    page.wait_for_selector('.avatar-anchor', timeout=timeout) or \
+    page.wait_for_selector('[data-e2e="profile-icon"]', timeout=timeout)
 
     config['cookies'] = context.cookies()
-    
+
     appContext = page.evaluate('JSON.parse(document.querySelector("#__UNIVERSAL_DATA_FOR_REHYDRATION__").innerHTML).__DEFAULT_SCOPE__["webapp.app-context"]')
     config['app_context'] = {
       "appId": appContext["appId"],
@@ -66,5 +85,17 @@ def captureTiktokData():
     input("Press Enter to close browser...")
     browser.close()
 
+def getTiktokData():
+  config = getOrCreateConfig()
+
+  # Add token validation
+  if hasattr(config, 'cookies'):
+    msToken, sessionId = getAuthTokens(config.cookies)
+    if msToken and sessionId:
+      print("Valid tokens found in config, skipping browser capture")
+    else:
+      captureTiktokData(config)
+  return config
+
 if __name__ == "__main__":
-  captureTiktokData()
+  getTiktokData()
