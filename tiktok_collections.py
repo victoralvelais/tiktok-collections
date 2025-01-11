@@ -66,6 +66,14 @@ def saveToJson(data, fileName):
     json.dump(data, f, indent=2)
   print(f"\nData saved to {fileName}")
 
+def recentSave(filename):
+  return os.path.exists(filename) and time.time() - os.path.getmtime(filename) < 12 * 3600
+
+def recentlyCollected(dataFilePath, collections):
+  recent = recentSave(dataFilePath)
+  itemsCollected = all('itemList' in collection and collection['itemList'] for collection in collections)
+  return (recent and itemsCollected)
+
 def map_collection_item(item):
   return {
     'author': {
@@ -112,8 +120,8 @@ def getCollectionData(config=None):
   dataFilePath = f'collection_data_{config.app_context.user.uniqueId}.json'
   
   cursor = 0
-  hasMore = not (os.path.exists(dataFilePath) and time.time() - os.path.getmtime(dataFilePath) < 12 * 3600)
-  collections = [] if hasMore else json.load(open(dataFilePath))['collections']  # hasMore = True
+  hasMore = not recentSave(dataFilePath)
+  collections = [] if hasMore else json.load(open(dataFilePath))['collections']
   
   while hasMore:
     reqUrl = buildUrl(config.app_context, cursor)
@@ -143,53 +151,57 @@ def getCollectionItems(config=None, collectionData=None):
   if not config:
     config = loadConfig()
   msToken, sessionId = getAuthTokens(config.cookies)
-  print(f"collectionData: {collectionData}")
+  dataFilePath = f'collection_data_{config.app_context.user.uniqueId}.json'
 
   if not collectionData:
-    with open(f"collection_data_{config.app_context.user.uniqueId}.json", 'r') as f:
+    with open(dataFilePath, 'r') as f:
       collectionData = json.load(f)
-
-  for collection in collectionData['collections']:
-    collectionItems = []
-    cursor = 0
-    hasMore = True
-
-    try:
-      print(f"\nFetching collection: {collection['name']} - Total: {collection['total']}")
-      while hasMore:
-        reqUrl = buildUrl(config.app_context, cursor, collection['collectionId'])
-        headers = buildHeaders(config.app_context, msToken, sessionId)
-        data = makeRequest(reqUrl, headers)
-        
-        
-        if 'itemList' in data:
-          # collectionItems.extend(data['itemList'])
-          collectionItems.extend([map_collection_item(item) for item in data['itemList']])
-          hasMore = data.get('hasMore', False)
-          cursor = data.get('cursor', 0)
-          print(f"Got {len(data['itemList'])} items. Total: {len(collectionItems)}")
-        else:
-          hasMore = False
-        
-        time.sleep(1)
-    except Exception as e:
-      print(f"\nError fetching collection {collection['name']}: {str(e)}")
-      print("Saving progress and continuing to next collection...")
-
-    # Directly add items to the collection in collectionDict
-    total_items = 0
-    for idx, collectionStore in enumerate(collectionData['collections']):
-      if collectionStore['collectionId'] == collection['collectionId']:
-        collectionData['collections'][idx]['itemList'] = collectionItems
-        items_in_collection = len(collectionItems)
-        print(f"Collection '{collectionStore['name']}': {items_in_collection} items")
-        total_items += items_in_collection
-        break
-    
-    print(f"\nTotal items across all collections: {total_items}")
   
-  saveToJson(collectionData, f"collection_data_{config.app_context.user.uniqueId}.json")
-  return collectionData
+  if recentlyCollected(dataFilePath, collectionData['collections']):
+    print("All collections were recently fetched - skipping update")
+    return collectionData
+
+  else:
+    for collection in collectionData['collections']:
+      collectionItems = []
+      cursor = 0
+      hasMore = True
+      totalItems = 0
+
+      try:
+        print(f"\nFetching collection: {collection['name']} - Total: {collection['total']}")
+        while hasMore:
+          reqUrl = buildUrl(config.app_context, cursor, collection['collectionId'])
+          headers = buildHeaders(config.app_context, msToken, sessionId)
+          data = makeRequest(reqUrl, headers)
+          
+          
+          if 'itemList' in data:
+            collectionItems.extend([map_collection_item(item) for item in data['itemList']])
+            hasMore = data.get('hasMore', False)
+            cursor = data.get('cursor', 0)
+            print(f"Got {len(data['itemList'])} items. Total: {len(collectionItems)}")
+          else:
+            hasMore = False
+          
+          time.sleep(1)
+      except Exception as e:
+        print(f"\nError fetching collection {collection['name']}: {str(e)}")
+        print("Saving progress and continuing to next collection...")
+
+      # Directly add items to the collection in collectionDict
+      for idx, collectionStore in enumerate(collectionData['collections']):
+        if collectionStore['collectionId'] == collection['collectionId']:
+          collectionData['collections'][idx]['itemList'] = collectionItems
+          items_in_collection = len(collectionItems)
+          print(f"Collection '{collectionStore['name']}': {items_in_collection} items")
+          totalItems += items_in_collection
+          break
+      
+      print(f"\nTotal items across all collections: {totalItems}")
+
+    saveToJson(collectionData, f"collection_data_{config.app_context.user.uniqueId}.json")
+    return collectionData
 
 if __name__ == "__main__":
   pass
