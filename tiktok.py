@@ -21,13 +21,6 @@ def saveConfig(config):
     with open('tiktok_config.json', 'w') as f:
       json.dump(config, f, indent=2)
 
-def getCredentials():
-  credentialsFile = 'credentials.json'
-  if os.path.exists(credentialsFile):
-    with open(credentialsFile, 'r') as f:
-      return json.load(f)
-  return None
-
 def getAuthTokens(cookies):
   msToken = next((cookie.value for cookie in cookies if cookie.name == 'msToken'), '')
   sessionId = next((cookie.value for cookie in cookies if cookie.name == 'sessionid'), '')
@@ -42,14 +35,6 @@ def captureTiktokData(config):
     timeout = 60000 * 5
 
     page.goto("https://www.tiktok.com/login/phone-or-email/email")
-    credentials = getCredentials()
-
-    if credentials:
-      page.fill('input[name="username"]', credentials['username'])
-      page.fill('input[type="password"]', credentials['password'])
-      page.click('button[type="submit"]')
-    else:
-      input("Please login manually on TikTok and press Enter when done...")
 
     page.wait_for_selector('a[href*="/upload"]', timeout=timeout) or \
     page.wait_for_selector('.avatar-anchor', timeout=timeout) or \
