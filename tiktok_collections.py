@@ -15,7 +15,7 @@ def buildUrl(appContext, cursor=0, collectionId=None):
     "aid": "1988",
     "count": "30",
     "cursor": str(cursor),
-    "secUid": appContext.user.secUid
+    "secUid": appContext['user']['secUid']
   }
   
   if collectionId:
@@ -27,8 +27,7 @@ def buildUrl(appContext, cursor=0, collectionId=None):
 
 def loadConfig():
   with open('tiktok_config.json', 'r') as f:
-    configDict = json.load(f)
-    config = json.loads(json.dumps(configDict), object_hook=lambda d: SimpleNamespace(**d))
+    return json.load(f)
   return config
 
 def makeRequest(url, headers):
@@ -56,7 +55,7 @@ def makeRequest(url, headers):
 def buildHeaders(appContext, msToken, sessionId):
   return {
     "Accept": "*/*",
-    "User-Agent": appContext.userAgent,
+    "User-Agent": appContext['userAgent'],
     "Content-Type": "application/json",
     "Cookie": f"sessionid={sessionId}; msToken={msToken}"
   }
@@ -116,16 +115,16 @@ def map_collection_item(item):
 def getCollectionData(config=None):
   if not config:
     config = loadConfig()
-  msToken, sessionId = getAuthTokens(config.cookies)
-  dataFilePath = f'collection_data_{config.app_context.user.uniqueId}.json'
+  msToken, sessionId = getAuthTokens(config['cookies'])
+  dataFilePath = f"collection_data_{config['app_context']['user']['uniqueId']}.json"
   
   cursor = 0
   hasMore = not recentSave(dataFilePath)
   collections = [] if hasMore else json.load(open(dataFilePath))['collections']
   
   while hasMore:
-    reqUrl = buildUrl(config.app_context, cursor)
-    headers = buildHeaders(config.app_context, msToken, sessionId)
+    reqUrl = buildUrl(config['app_context'], cursor)
+    headers = buildHeaders(config['app_context'], msToken, sessionId)
     data = makeRequest(reqUrl, headers)
 
     if 'collectionList' in data:
@@ -140,7 +139,7 @@ def getCollectionData(config=None):
 
   outputData = {
     'total': len(collections),
-    'user': vars(config.app_context.user),
+    'user': config['app_context']['user'],
     'collections': collections
   }
 
@@ -150,8 +149,8 @@ def getCollectionData(config=None):
 def getCollectionItems(config=None, collectionData=None):
   if not config:
     config = loadConfig()
-  msToken, sessionId = getAuthTokens(config.cookies)
-  dataFilePath = f'collection_data_{config.app_context.user.uniqueId}.json'
+  msToken, sessionId = getAuthTokens(config['cookies'])
+  dataFilePath = f"collection_data_{config['app_context']['user']['uniqueId']}.json"
 
   if not collectionData:
     with open(dataFilePath, 'r') as f:
@@ -171,8 +170,8 @@ def getCollectionItems(config=None, collectionData=None):
       try:
         print(f"\nFetching collection: {collection['name']} - Total: {collection['total']}")
         while hasMore:
-          reqUrl = buildUrl(config.app_context, cursor, collection['collectionId'])
-          headers = buildHeaders(config.app_context, msToken, sessionId)
+          reqUrl = buildUrl(config['app_context'], cursor, collection['collectionId'])
+          headers = buildHeaders(config['app_context'], msToken, sessionId)
           data = makeRequest(reqUrl, headers)
           
           
@@ -200,7 +199,7 @@ def getCollectionItems(config=None, collectionData=None):
       
       print(f"\nTotal items across all collections: {totalItems}")
 
-    saveToJson(collectionData, f"collection_data_{config.app_context.user.uniqueId}.json")
+    saveToJson(collectionData, dataFilePath)
     return collectionData
 
 if __name__ == "__main__":

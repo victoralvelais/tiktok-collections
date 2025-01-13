@@ -1,33 +1,30 @@
 from playwright.sync_api import sync_playwright
 import json
-import os
 import time
-from types import SimpleNamespace
 
 def getOrCreateConfig():
   configFile = 'tiktok_config.json'
-  if not os.path.exists(configFile):
-    config = {
-      'cookies': [],
-      'app_context': {},
-    }
+  config = { 'cookies': [], 'app_context': {} }
+  
+  try:
+    with open(configFile, 'r') as f:
+      return json.load(f)
+  except (FileNotFoundError, json.JSONDecodeError):
     with open(configFile, 'w') as f:
       json.dump(config, f, indent=2)
-  with open(configFile, 'r') as f:
-    config_dict = json.load(f)
-    return json.loads(json.dumps(config_dict), object_hook=lambda d: SimpleNamespace(**d))
+    return config
 
 def saveConfig(config):
     with open('tiktok_config.json', 'w') as f:
       json.dump(config, f, indent=2)
 
 def getAuthTokens(cookies):
-  msToken = next((cookie.value for cookie in cookies if cookie.name == 'msToken'), '')
-  sessionId = next((cookie.value for cookie in cookies if cookie.name == 'sessionid'), '')
+  msToken = next((cookie['value'] for cookie in cookies if cookie['name'] == 'msToken'), '')
+  sessionId = next((cookie['value'] for cookie in cookies if cookie['name'] == 'sessionid'), '')
   return msToken, sessionId
 
 def captureTiktokData(config):
-  print("No valid tokens found in config, capturing browser data")
+  print("No cookies found in config, login to TikTok to continue")
   with sync_playwright() as p:
     browser = p.chromium.launch(headless=False)
     context = browser.new_context()
@@ -67,19 +64,16 @@ def captureTiktokData(config):
 
     saveConfig(config)
     time.sleep(10)
-    input("Press Enter to close browser...")
     browser.close()
 
 def getTiktokData():
   config = getOrCreateConfig()
 
   # Add token validation
-  if hasattr(config, 'cookies'):
-    msToken, sessionId = getAuthTokens(config.cookies)
-    if msToken and sessionId:
-      print("Valid tokens found in config, skipping browser capture")
-    else:
-      captureTiktokData(config)
+  if not config.get('cookies'):
+    msToken, sessionId = getAuthTokens(config['cookies'])
+    if msToken and sessionId: print("Session cookies found, skipping login")
+    else: captureTiktokData(config)
   return config
 
 if __name__ == "__main__":

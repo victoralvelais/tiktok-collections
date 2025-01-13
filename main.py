@@ -9,9 +9,10 @@ def main():
   collectionData = { "collections": collections }
   collectionItems = getCollectionItems(config, collectionData)
 
-  # Testing - Limit to first collection and first 5 videos
-  collectionItems["collections"] = collectionItems["collections"][:1]
-  collectionItems["collections"][0]['itemList'] = collectionItems['collections'][0].get('itemList', [])[:5]
+  # Testing - Limit to 10 collections and first 15 videos
+  collectionItems["collections"] = collectionItems["collections"][:10]
+  for collection in collectionItems["collections"]:
+    collection['itemList'] = collection.get('itemList', [])[:15] 
   
   asyncio.run(downloadCollectionVideos(collectionItems, config))
   return collectionItems
