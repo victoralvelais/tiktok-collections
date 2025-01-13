@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 
 def truncateDescription(desc, max_words=12):
-  words = [word for word in desc.split() if not word.startswith('#')]
+  words = [word.replace('@', '(a)').replace(':', ' - ') for word in desc.split()]
   truncated = ' '.join(words[:max_words])
   if len(words[max_words:]) > 0:
     truncated += ' ...'
@@ -42,15 +42,27 @@ async def downloadCollectionVideos(collectionData, config=None):
         createTime = datetime.fromtimestamp(item['createTime']).strftime('%m-%d-%Y')
         filenameBase = f"{authorId} - {desc} - {createTime}"
         url = f"https://www.tiktok.com/@{authorId}/video/{videoId}"
-        print(f"Downloading {url}")
 
         try:
           # Save video file
-          video = api.video(url=url)
-          await video.info()
           videoPath = os.path.join(collectionPath, f"{filenameBase}.mp4")
+          print(f"\nSaving video - {videoPath}")
+          video = api.video(url=url)
+          info = await video.info()
+
+          if not info["video"]["downloadAddr"]:
+            info["video"]["downloadAddr"] = info["video"]["playAddr"]
+
+          videoBytes = await video.bytes()
+
+          if os.path.exists(videoPath):
+            existingSize = os.path.getsize(videoPath)
+            if existingSize == len(videoBytes):
+              print(f"Skipping duplicate")
+              continue
+
           with open(videoPath, "wb") as output:
-            output.write(await video.bytes())
+            output.write(videoBytes)
 
           # Save metadata
           metaPath = os.path.join(collectionPath, f"{filenameBase}.json")
@@ -71,7 +83,7 @@ async def downloadCollectionVideos(collectionData, config=None):
           time.sleep(1)  # Rate limiting
 
         except Exception as e:
-          print(f"Error downloading video {videoId}: {str(e)}")
+          print(f"Error downloading video {url}: {str(e)}")
           failures[videoId] = {
             "collection": collectionName,
             "error": str(e),
