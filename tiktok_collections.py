@@ -162,11 +162,11 @@ def getCollectionItems(config=None, collectionData=None):
     return collectionData
 
   else:
+    totalItems = 0
     for collection in collectionData['collections']:
       collectionItems = []
       cursor = 0
       hasMore = True
-      totalItems = 0
 
       try:
         print(f"\nFetching collection: {collection['name']} - Total: {collection['total']}")
