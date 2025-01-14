@@ -84,6 +84,7 @@ async def savePhotos(imagePost, slideShowPath, saveLog):
         response.raise_for_status()
         with open(imagePath, "wb") as f:
           f.write(response.content)
+        await asyncio.sleep(0.5)
         break
       except Exception:
         continue
