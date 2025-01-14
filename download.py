@@ -65,12 +65,12 @@ async def saveVideo(video, videoPath, saveLog):
   with open(videoPath, "wb") as output:
     output.write(videoBytes)
 
-async def savePhotos(imagePost, photoPath, saveLog):
+async def savePhotos(imagePost, slideShowPath, saveLog):
   images = imagePost['images']
-  os.makedirs(os.path.dirname(photoPath), exist_ok=True)
+  os.makedirs(slideShowPath, exist_ok=True)
 
   for i, image in enumerate(images):
-    imagePath = f"{photoPath}-{i+1}.jpg"
+    imagePath = os.path.join(slideShowPath, f"image-{i+1}.jpg")
     if skipDuplicatePhotos(imagePath, 1):
       print(f"\nAlready saved - {imagePath}")
       continue
@@ -87,6 +87,7 @@ async def savePhotos(imagePost, photoPath, saveLog):
         break
       except Exception:
         continue
+
 async def downloadCollectionVideos(collectionData, config=None):
   if not config:
     config = loadConfig()
