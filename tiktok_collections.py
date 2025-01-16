@@ -5,12 +5,13 @@ import time
 from types import SimpleNamespace
 from tiktok import getAuthTokens
 
-def buildUrl(appContext, cursor=0, collectionId=None):
+def buildUrl(appContext, cursor=0, collectionId=None, type="list"):
   baseUrls = {
     "list": "https://www.tiktok.com/api/user/collection_list/",
-    "items": "https://www.tiktok.com/api/collection/item_list/"
+    "items": "https://www.tiktok.com/api/collection/item_list/",
+    "favorites": "https://www.tiktok.com/api/user/collect/item_list/",
   }
-  
+
   queryParams = {
     "aid": "1988",
     "count": "30",
@@ -21,8 +22,8 @@ def buildUrl(appContext, cursor=0, collectionId=None):
   if collectionId:
     queryParams["collectionId"] = collectionId
     queryParams["sourceType"] = "113"
+    type = "items"
 
-  type = "items" if collectionId else "list"
   return baseUrls[type] + "?" + "&".join(f"{k}={v}" for k, v in queryParams.items())
 
 def loadConfig():
@@ -201,6 +202,41 @@ def getCollectionItems(config=None, collectionData=None):
 
     saveToJson(collectionData, dataFilePath)
     return collectionData
+
+def getFavorites(config=None):
+  if not config:
+    config = loadConfig()
+  msToken, sessionId = getAuthTokens(config['cookies'])
+  dataFilePath = f"favorites_data_{config['app_context']['user']['uniqueId']}.json"
+
+  cursor = 0
+  hasMore = not recentSave(dataFilePath)
+  favorites = [] if hasMore else json.load(open(dataFilePath))['favorites']
+
+  try:
+    while hasMore:
+      reqUrl = buildUrl(config['app_context'], cursor, None, "favorites")
+      headers = buildHeaders(config['app_context'], msToken, sessionId)
+      data = makeRequest(reqUrl, headers)
+
+      if 'itemList' in data:
+        favorites.extend([map_collection_item(item) for item in data['itemList']])
+        hasMore = data.get('hasMore', False)
+        cursor = data.get('cursor', 0)
+        print(f"Got {len(data['itemList'])} items. Total: {len(favorites)}")
+      time.sleep(1)
+  except Exception as e:
+    print(f"\nError fetching favorites: {str(e)}")
+    print("Saving progress and continuing to next collection...")
+
+  outputData = {
+    'total': len(favorites),
+    'user': config['app_context']['user'],
+    'favorites': favorites
+  }
+
+  saveToJson(outputData, dataFilePath)
+  return favorites
 
 if __name__ == "__main__":
   pass
