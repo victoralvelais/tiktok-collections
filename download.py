@@ -71,22 +71,14 @@ async def fetchVideo(api, url):
     getDownloadAddr(info)
     return video, info
   except Exception as e:
-    print(f"\nFETCHVIDEO ERROR: {url} - {e}")
-    # Log the response details
-    if hasattr(e, 'response'):
-      print(f"\nError from URL: {url}")
-      print(f"\nResponse Status: {e.response.status_code}")
-      print(f"\nResponse Headers: {e.response.headers}")
-      print(f"\nResponse Body: {e.response.text}")
-      print(f"\nResponse Full: {str(e)}")
+    print(f"\nError fetching video. Retrying {url} - {e}")
     raise
 
 async def saveVideo(video, videoPath, info, saveLog):
   try:
-    print("Trying videobytes")
     videoBytes = await withRetries(lambda: video.bytes())
   except Exception as e:
-    print("Trying downloadAddr manually")
+    print("\nvideo.bytes() failed - Downloading manually")
     downloadAddr = info["video"]["downloadAddr"]
     challengeToken = info.get('tt_chain_token')
     videoBytes = await manuallySaveVideo(downloadAddr, challengeToken)
@@ -187,7 +179,6 @@ def getSessionCookie(cookies):
   return None
 
 def manualFetch(url):
-  # Try manual fetch as fallback
   config = loadConfig()
   msToken, sessionId = getAuthTokens(config['cookies'])
 
@@ -195,11 +186,12 @@ def manualFetch(url):
     "Accept": "*/*",
     "User-Agent": config['app_context']['userAgent'],
     "Cookie": f"sessionid={sessionId}; msToken={msToken}"
-    }
-  
+  }
+
   response = httpx.get(url, headers=headers)
   response.raise_for_status()
   challengeToken = response.cookies.get('tt_chain_token')
+
   videoId = getIdFromUrl(url)
   videoInfo = parseVideoInfo(response, videoId)
   videoInfo['tt_chain_token'] = challengeToken
@@ -267,9 +259,14 @@ async def downloadCollectionVideos(collectionData, config=None):
           time.sleep(1)  # Rate limiting
 
         except Exception as e:
-          print(f"Error downloading video {url}: {str(e)}")
-          failures[videoId] = { "collection": collectionName, "error": str(e), "metadata": item }
-          if 'info' in locals(): failures[videoId]["video"] = info  # Only add info if it exists
+          print(f"\nError downloading video {url}: {str(e)}")
+          failures[videoId] = {
+            "collection": collectionName,
+            "error": str(e),
+            "metadata": item
+          }
+          # Only add info if it exists
+          if 'info' in locals(): failures[videoId]["video"] = info
 
     # Save failures log
     if failures:
