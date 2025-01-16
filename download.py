@@ -26,13 +26,27 @@ def cleanFilename(text, maxWords=12, maxLength=60):
   
   return cleaned
 
-async def downloadWithRetries(video, maxRetries=3):
+def getIdFromUrl(url): return url.split('/')[-1]
+
+def getDownloadAddr(info):
+  if "video" in info:
+    videoInfo = info["video"]
+    videoInfo["downloadAddr"] = (
+      videoInfo.get("downloadAddr") or 
+      videoInfo.get("playAddr") or
+      ""
+    )
+
+async def withRetries(operation, maxRetries=3):
   for attempt in range(maxRetries):
     try:
-      return await video.bytes()
+      return await operation()
     except Exception as e:
       if attempt == maxRetries - 1:
+        print(f"Max retries reached. Error: {str(e)}")
+        print(f"\nError from operation: {operation}")
         raise
+      # Exponential backoff: 2^0=1, 2^1=2, 2^2=4 seconds, etc.
       await asyncio.sleep(2 ** attempt)
 
 def skipDuplicateVideos(file):
@@ -41,29 +55,63 @@ def skipDuplicateVideos(file):
     return existingSize > 300 * 1024  # 300KB
   
 def skipDuplicatePhotos(path, photoCount):
+  if not os.path.exists(path):
+    return False
   PHOTO_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif')
   return len([f for f in os.listdir(path)
     if f.lower().endswith(PHOTO_EXTENSIONS)]) >= photoCount
 
 async def fetchVideo(api, url):
-  video = api.video(url=url)
-  info = await video.info()
+  try:
+    video = api.video(url=url)
+    info = await video.info()
+    if info.get('isContentClassified') == True:
+      print(f"\nisClassified: {url}")
+      info = manualFetch(url)
+    getDownloadAddr(info)
+    return video, info
+  except Exception as e:
+    print(f"\nFETCHVIDEO ERROR: {url} - {e}")
+    # Log the response details
+    if hasattr(e, 'response'):
+      print(f"\nError from URL: {url}")
+      print(f"\nResponse Status: {e.response.status_code}")
+      print(f"\nResponse Headers: {e.response.headers}")
+      print(f"\nResponse Body: {e.response.text}")
+      print(f"\nResponse Full: {str(e)}")
+    raise
 
-  if "video" in info:
-    videoInfo = info["video"]
-    videoInfo["downloadAddr"] = (
-      videoInfo.get("downloadAddr") or 
-      videoInfo.get("playAddr") or 
-      ""
-    )
-
-  return video, info
-
-async def saveVideo(video, videoPath, saveLog):
-  videoBytes = await downloadWithRetries(video)
+async def saveVideo(video, videoPath, info, saveLog):
+  try:
+    print("Trying videobytes")
+    videoBytes = await withRetries(lambda: video.bytes())
+  except Exception as e:
+    print("Trying downloadAddr manually")
+    downloadAddr = info["video"]["downloadAddr"]
+    challengeToken = info.get('tt_chain_token')
+    videoBytes = await manuallySaveVideo(downloadAddr, challengeToken)
   print(saveLog)
   with open(videoPath, "wb") as output:
     output.write(videoBytes)
+
+async def manuallySaveVideo(url, challengeToken=None):
+  config = loadConfig()
+  msToken, sessionId = getAuthTokens(config['cookies'])
+  cookieString = f"sessionid={sessionId}; msToken={msToken}"
+  if challengeToken: cookieString += f"; tt_chain_token={challengeToken}"
+
+  headers = {
+    "Accept": "*/*",
+    "User-Agent": config['app_context']['userAgent'],
+    "Cookie": cookieString,
+    "Range": "bytes=0-",
+    "Accept-Encoding": 'identity;q=1, *;q=0',
+    "Referer": 'https://www.tiktok.com/'
+  }
+
+  response = httpx.get(url, headers=headers)
+  response.raise_for_status()
+  return response.content
 
 async def savePhotos(imagePost, slideShowPath, saveLog):
   images = imagePost['images']
@@ -89,15 +137,84 @@ async def savePhotos(imagePost, slideShowPath, saveLog):
       except Exception:
         continue
 
+def saveMetadata(metaPath, item):
+  metadata = {
+    "author": item['author'],
+    "contents": item['contents'],
+    "createTime": item['createTime'],
+    "desc": item['desc'],
+    "id": item['id'],
+    "music": item['music'],
+    "stats": item['stats'],
+    "video": item['video']
+  }
+
+  with open(metaPath, "w", encoding='utf-8') as f:
+    json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+def parseVideoInfo(response, id):
+  # Try SIGI_STATE first
+  sigiData = extractJsonFromScript(response.text, "SIGI_STATE")
+  if sigiData: return sigiData["ItemModule"][id]
+
+  # Fall back to UNIVERSAL_DATA
+  universalData = extractJsonFromScript(response.text, "__UNIVERSAL_DATA_FOR_REHYDRATION__")
+  if universalData:
+    defaultScope = universalData.get("__DEFAULT_SCOPE__", {})
+    videoDetail = defaultScope.get("webapp.video-detail", {})
+
+    if videoDetail.get("statusCode", 0) != 0:
+      raise ValueError(f"Invalid video detail response. Status code: {response.status_code}")
+
+    return videoDetail.get("itemInfo", {}).get("itemStruct")
+
+  raise ValueError(f"No valid video data found. Status code: {response.status_code}")
+
+def extractJsonFromScript(htmlText, scriptId):
+  start = htmlText.find(f'<script id="{scriptId}" type="application/json">')
+  if start == -1: return None
+
+  start += len(f'<script id="{scriptId}" type="application/json">')
+  end = htmlText.find("</script>", start)
+
+  if end == -1: return None
+  return json.loads(htmlText[start:end])
+
+def getSessionCookie(cookies):
+  for cookie in cookies:
+    if cookie['name'] == 'sessionid':
+      return cookie
+  return None
+
+def manualFetch(url):
+  # Try manual fetch as fallback
+  config = loadConfig()
+  msToken, sessionId = getAuthTokens(config['cookies'])
+
+  headers = {
+    "Accept": "*/*",
+    "User-Agent": config['app_context']['userAgent'],
+    "Cookie": f"sessionid={sessionId}; msToken={msToken}"
+    }
+  
+  response = httpx.get(url, headers=headers)
+  response.raise_for_status()
+  challengeToken = response.cookies.get('tt_chain_token')
+  videoId = getIdFromUrl(url)
+  videoInfo = parseVideoInfo(response, videoId)
+  videoInfo['tt_chain_token'] = challengeToken
+  return videoInfo
+
 async def downloadCollectionVideos(collectionData, config=None):
   if not config:
     config = loadConfig()
-  msToken, _s = getAuthTokens(config['cookies'])
+  cookies = config['cookies']
+  msToken, _s = getAuthTokens(cookies)
   id = config['app_context']['user']['uniqueId']
   print(f"Downloading {id}'s collections")
 
   async with TikTokApi() as api:
-    await api.create_sessions(ms_tokens=[msToken], num_sessions=1, sleep_after=3)
+    await api.create_sessions(ms_tokens=[msToken], num_sessions=1, sleep_after=5)
     # Create output directory
     outputDir = f"{id}-tiktok-collection"
     os.makedirs(outputDir, exist_ok=True)
@@ -122,9 +239,9 @@ async def downloadCollectionVideos(collectionData, config=None):
         createTime = datetime.fromtimestamp(item['createTime']).strftime('%m-%d-%Y')
         filenameBase = f"{authorId} - {desc} - {createTime}"
         url = f"https://www.tiktok.com/@{authorId}/video/{videoId}"
-        video, info = await fetchVideo(api, url)
 
         try:
+          video, info = await withRetries(lambda: fetchVideo(api, url))
           videoPath = os.path.join(collectionPath, f"{filenameBase}.mp4")
           imagePost = info.get('imagePost')
 
@@ -135,41 +252,24 @@ async def downloadCollectionVideos(collectionData, config=None):
               print(f"\nAlready saved - {collectionName}/{filenameBase[:40]}")
               continue
             saveLog = f"\nSaving slideshow {index}/{total} - {collectionName}/{filenameBase[:40]}"
-            savePhotos(imagePost, photoPath, saveLog)
+            await savePhotos(imagePost, photoPath, saveLog)
           else:
             # Save video
             if skipDuplicateVideos(videoPath):
               print(f"\nAlready saved - {collectionName}/{filenameBase[:40]}")
               continue
             saveLog = f"\nSaving video {index}/{total} - {collectionName}/{filenameBase[:40]}"
-            saveVideo(video, videoPath, saveLog)
+            await saveVideo(video, videoPath, info, saveLog)
 
           # Save metadata
           metaPath = os.path.join(collectionPath, f"{filenameBase}.json")
-          metadata = {
-            "author": item['author'],
-            "contents": item['contents'],
-            "createTime": item['createTime'],
-            "desc": item['desc'],
-            "id": item['id'],
-            "music": item['music'],
-            "stats": item['stats'],
-            "video": item['video']
-          }
-
-          with open(metaPath, "w", encoding='utf-8') as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-
+          saveMetadata(metaPath, item)
           time.sleep(1)  # Rate limiting
 
         except Exception as e:
           print(f"Error downloading video {url}: {str(e)}")
-          failures[videoId] = {
-            "collection": collectionName,
-            "error": str(e),
-            "metadata": item,
-            "video": info
-          }
+          failures[videoId] = { "collection": collectionName, "error": str(e), "metadata": item }
+          if 'info' in locals(): failures[videoId]["video"] = info  # Only add info if it exists
 
     # Save failures log
     if failures:
