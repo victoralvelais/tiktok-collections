@@ -238,5 +238,27 @@ def getFavorites(config=None):
   saveToJson(outputData, dataFilePath)
   return favorites
 
+def getUncategorizedFavorites(collectionItems, config=None):
+  if not config:
+    config = loadConfig()
+  
+  # Get all video IDs from collections
+  collectedIds = set()
+  for collection in collectionItems["collections"]:
+    collectedIds.update(item['id'] for item in collection.get('itemList', []))
+  print(f"Total unique videos found in collections: {len(collectedIds)}")
+  
+  # Get favorites and filter out already collected ones
+  favorites = getFavorites(config)
+  uncategorized = [
+    item 
+    for item in favorites 
+    if item['id'] not in collectedIds
+  ]
+  
+  return {
+    "collections": [{ "name": "Uncategorized", "itemList": uncategorized }]
+  }
+
 if __name__ == "__main__":
   pass
