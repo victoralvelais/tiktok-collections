@@ -1,9 +1,9 @@
-from tiktok_collections import getCollectionData, getCollectionItems, getFavorites, getUncategorizedFavorites
+from tiktok_collections import getCollectionData, getCollectionItems, getUncategorizedFavorites
 from tiktok import getTiktokData
 from download import downloadCollectionVideos
 import asyncio
 
-async def main():
+def main():
   config = getTiktokData()
 
   # Get collections
@@ -13,8 +13,8 @@ async def main():
   uncategorizedFavorites = getUncategorizedFavorites(collectionItems, config)
 
   # Download collections & favorites
-  await downloadCollectionVideos(collectionItems, config)
-  await downloadCollectionVideos(uncategorizedFavorites, config)
+  asyncio.run(downloadCollectionVideos(collectionItems, config))
+  asyncio.run(downloadCollectionVideos(uncategorizedFavorites, config))
 
 if __name__ == "__main__":
-  asyncio.run(main())
+  main()

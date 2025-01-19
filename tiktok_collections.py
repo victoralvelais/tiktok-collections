@@ -64,6 +64,7 @@ def buildHeaders(appContext, msToken, sessionId):
 def saveToJson(data, fileName):
   with open(fileName, 'w') as f:
     json.dump(data, f, indent=2)
+    f.flush()
   print(f"\nData saved to {fileName}")
 
 def recentSave(filename):
@@ -71,7 +72,7 @@ def recentSave(filename):
 
 def recentlyCollected(dataFilePath, collections):
   recent = recentSave(dataFilePath)
-  itemsCollected = all('itemList' in collection and collection['itemList'] for collection in collections)
+  itemsCollected = all('itemList' in collection and collection['itemList'] and len(collection['itemList']) > 0 for collection in collections)
   return (recent and itemsCollected)
 
 def map_collection_item(item):
@@ -120,7 +121,8 @@ def getCollectionData(config=None):
   dataFilePath = f"collection_data_{config['app_context']['user']['uniqueId']}.json"
   
   cursor = 0
-  hasMore = not recentSave(dataFilePath)
+  # hasMore = not recentSave(dataFilePath) # Bugged - first run
+  hasMore = True
   collections = [] if hasMore else json.load(open(dataFilePath))['collections']
   
   while hasMore:
@@ -157,9 +159,10 @@ def getCollectionItems(config=None, collectionData=None):
     with open(dataFilePath, 'r') as f:
       collectionData = json.load(f)
   
-  if recentlyCollected(dataFilePath, collectionData['collections']):
-    print("All collections were recently fetched - skipping update")
-    return collectionData
+  # Bugged
+  # if recentlyCollected(dataFilePath, collectionData['collections']):
+  #   print("All collections were recently fetched - skipping update")
+  #   return collectionData
 
   else:
     totalItems = 0

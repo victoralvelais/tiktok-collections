@@ -29,13 +29,13 @@ def captureTiktokData(config):
     browser = p.chromium.launch(headless=False)
     context = browser.new_context()
     page = context.new_page()
-    timeout = 60000 * 5
+    timeout = 60000 * 3
 
     page.goto("https://www.tiktok.com/login/phone-or-email/email")
 
-    page.wait_for_selector('a[href*="/upload"]', timeout=timeout) or \
-    page.wait_for_selector('.avatar-anchor', timeout=timeout) or \
-    page.wait_for_selector('[data-e2e="profile-icon"]', timeout=timeout)
+    page.wait_for_selector('a[href*="/upload"]', state="attached", timeout=timeout) or \
+    page.wait_for_selector('.avatar-anchor', state="attached", timeout=timeout) or \
+    page.wait_for_selector('[data-e2e="profile-icon"]', state="attached", timeout=timeout)
 
     config['cookies'] = context.cookies()
 
