@@ -17,20 +17,13 @@ Run the main script to capture your TikTok session data and fetch collections:
 
 This will:
 - Open a browser window to log in on first run
-- Capture necessary cookies and app context data
+- Capture necessary cookies & data to access your collections (i.e. username)
 - Fetch a list of all your collections
 - Fetch all items within each collection
-- Save everything to a JSON file named `collection_data_[username].json`
-
-## Output
-The tool generates a JSON file containing:
-- List of all your collections
-- Collection metadata (name, description, etc.)
-- Details for each video in the collections including:
-  - Video metadata (duration, dimensions, etc.)
-  - Author information
-  - Music details
-  - Statistics (likes, shares, etc.)
+- Save collective metadata to a JSON file named `collection_data_[username].json`
+- Save videos & slideshow photos to their collections folder under `[username]-tiktok-collection`
+- Save a metadata file in the collections containing details for the collection (name, description, etc.) and each entry
+- Metadata information includes data about the video, author, music, and statistics (likes, shares, etc.)
 
 ## Note
-Video downloading functionality is planned for future updates.
+Automatic cookie fetching & using your personal browser for sessions is planned, but not a priority.
