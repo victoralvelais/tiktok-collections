@@ -1,5 +1,5 @@
 # tiktok-collections
-A Python utility for backing up your TikTok collections. It captures collection metadata, downloads the videos as mp4 files, and slideshows as png folders.
+A Python utility for backing up your TikTok collections. It captures collection metadata and downloads the videos as mp4 files & slideshows as png folders.
 
 ## Installation
 ```
