@@ -1,5 +1,5 @@
 # tiktok-collections
-A Python utility for backing up your TikTok collections. It captures collection metadata and will eventually support downloading the videos themselves as mp4 files.
+A Python utility for backing up your TikTok collections. It captures collection metadata, downloads the videos as mp4 files, and slideshows as png folders.
 
 ## Installation
 ```
@@ -8,8 +8,6 @@ $ cd tiktok-collections
 $ python -m playwright install
 $ pip install -r requirements.txt
 ```
-
-If you get permission errors, try using `sudo` or using a virtual environment.
 
 ## Usage
 Run the main script to capture your TikTok session data and fetch collections:
@@ -25,5 +23,6 @@ This will:
 - Save a metadata file in the collections containing details for the collection (name, description, etc.) and each entry
 - Metadata information includes data about the video, author, music, and statistics (likes, shares, etc.)
 
-## Note
-Automatic cookie fetching & using your personal browser for sessions is planned, but not a priority.
+## Next Steps
+- Automatic cookie fetching using personal browser
+- Save top comment threads
